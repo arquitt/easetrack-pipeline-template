@@ -115,6 +115,7 @@ jobs:
           tags: "${{ steps.vars.outputs.ecr_tag_latest }},${{ steps.vars.outputs.ecr_tag }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
           build-args: |
             "GH_PAT=${{ secrets.GH_PAT }}"
             "BRANCH_NAME=${{ steps.vars.outputs.branch_name }}"
