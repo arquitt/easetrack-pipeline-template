@@ -30,7 +30,7 @@ on:
         required: false
         type: string
       platforms:
-        default: "linux/arm64"
+        default: "linux/amd64"
         required: false
         type: string
     secrets:
