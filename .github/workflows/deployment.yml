@@ -146,9 +146,11 @@ jobs:
         if: success() || failure()
         run: |
           TEMPLATE=target/services/${{ steps.vars.outputs.repo_name }}/template.yml
+          APP_ENV_FILE=target/services/${{ steps.vars.outputs.repo_name }}/envs.sh
           CURRENT_DIR=$(dirname -- "$0")
           ENV_FILE="target/envs/${{ inputs.namespace }}-pipeline.sh"
-          source "$ENV_FILE"
+          source "${ENV_FILE}"
+          source "${APP_ENV_FILE}"
           envsubst < $TEMPLATE > template_result.yml
           sed -i '/^\([[:space:]]*image: *\).*/s//\1${{ steps.vars.outputs.ecr_tag_latest_escaped }}/;' template_result.yml
           kubectl apply -f template_result.yml --validate=false
