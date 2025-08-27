@@ -149,6 +149,8 @@ jobs:
           APP_ENV_FILE=target/services/${{ steps.vars.outputs.repo_name }}/envs.sh
           CURRENT_DIR=$(dirname -- "$0")
           ENV_FILE="target/envs/${{ inputs.namespace }}-pipeline.sh"
+          export BRANCH_NAME="${{ steps.vars.outputs.branch_name }}"
+          export PROJECT_VERSION="${{ steps.vars.outputs.project_version }}"
           source "${ENV_FILE}"
           source "${APP_ENV_FILE}"
           envsubst < $TEMPLATE > template_result.yml
