@@ -18,7 +18,7 @@ on:
       run_lint:
         required: false
         type: boolean
-        default: false
+        default: true
       run_pytest:
         required: false
         type: boolean
@@ -30,6 +30,8 @@ on:
     secrets:
       GH_PUSHER:
         required: true
+      GH_PAT:
+        required: true
   push:
     branches:
       - dev
@@ -39,34 +41,45 @@ on:
     paths-ignore:
       - "**.md"
 jobs:
-  Test:
-    if: ${{ inputs.run_changelog == true }}
-    name: Unit Tests
+  Unit:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: arquitt
+          POSTGRES_PASSWORD: arquitt
+          POSTGRES_DB: easetrack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U arquitt -d easetrack"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql+psycopg2://arquitt:arquitt@localhost:5432/easetrack
+      PGPASSWORD: arquitt
+      POETRY_VIRTUALENVS_CREATE: "true"
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GH_PUSHER }}
-      - run: |
+
+      - name: Configure git user
+        run: |
           git config user.name github-actions[bot]
           git config user.email github-actions[bot]@users.noreply.github.com
 
-      - name: Extract python version from pyproject.toml
-        id: vars
-        run: |
-          cd ${{ inputs.app_path }}
-          PYTHON_VERSION=$(grep -Po '^\s*python\s*=\s*"\K[^"]+' pyproject.toml)
-          echo "Python version: $PYTHON_VERSION"
-          echo "PYTHON_VERSION=${PYTHON_VERSION}" >> $GITHUB_OUTPUT
+      - name: Install Poetry
+        run: pipx install poetry
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ steps.vars.outputs.PYTHON_VERSION }}
+          python-version: "3.13"
+          cache: "poetry"
 
-      - name: Cache poetry dependencies
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pypoetry
@@ -77,29 +90,35 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd ${{ inputs.deps_path }}
           sudo apt-get install -y libxml2-utils
-          if [[ -f pyproject.toml ]] && grep -q '\[tool.poetry\]' pyproject.toml; then
-            pip install poetry
-            if grep -q '\[tool.poetry.group.test.dependencies\]' pyproject.toml; then
-              poetry install --no-root --with test
-            else
-              poetry install --no-root --with dev
-            fi
+          git config --global url."https://x-token-auth:${{ secrets.GH_PAT }}@github.com".insteadOf "ssh://git@github.com"
+          poetry config installer.max-workers 10
+          if grep -q '\[tool.poetry.group.test.dependencies\]' pyproject.toml; then
+            poetry install --no-root --with main,test
           else
-            pip install -r requirements.txt
-            pip install -r requirements-test.txt
+            poetry install --no-root --with main,dev
           fi
 
-      - name: Run tests
-        id: tests
+      - name: Wait for Postgres
         run: |
-          cd ${{ inputs.app_path }}
-          if grep -q '\[tool.poetry\]' pyproject.toml; then
-            PYTHONPATH=. poetry run pytest -n auto --cov-fail-under=0
-          else
-            pytest -n auto --cov-fail-under=0
-          fi
+          until pg_isready -h localhost -p 5432 -U arquitt -d easetrack; do
+            echo "Waiting for Postgres..."
+            sleep 2
+          done
+
+      - name: Reset database
+        run: |
+          psql -h localhost -U arquitt -d postgres -c "DROP DATABASE IF EXISTS easetrack;"
+          psql -h localhost -U arquitt -d postgres -c "CREATE DATABASE easetrack;"
+
+      - name: Run migrations
+        run: |
+          sed -i "s|/usr/local/lib/python3.13/site-packages|$(poetry run python -c 'import site; print(site.getsitepackages()[0])')|g" alembic.ini
+          PYTHONPATH=. poetry run alembic upgrade head
+
+      - name: Run tests
+        run: |
+          PYTHONPATH=. poetry run pytest -v --maxfail=1 --disable-warnings
           coverage_percentage=$(xmllint --xpath "string(//coverage/@line-rate)" coverage.xml)
           coverage_percentage=$(echo "$coverage_percentage * 100" | bc)
           formatted_coverage=$(printf "%.1f" "$coverage_percentage")
@@ -126,12 +145,10 @@ jobs:
 
       - name: Commit changes if badge updated
         if: steps.check_for_badge_changes.outputs.changed == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PUSHER }}
         run: |
           git add .github/badges/coverage.svg
           git commit -m "docs: update coverage badge [skip ci]"
-          git push -f
+          git push
         continue-on-error: true
 
   Lint:
@@ -140,7 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           token: ${{ secrets.GH_PUSHER }}
       - run: |
@@ -177,7 +194,7 @@ jobs:
       - name: Run pre-commit bundle
         run: |
           cd ${{ inputs.app_path }}
-          sed -i '1s/^/fail_fast: true\n/' .pre-commit-config.yaml
+          grep -q '^fail_fast: true' .pre-commit-config.yaml || sed -i '/^---$/a fail_fast: true' .pre-commit-config.yaml
           pre-commit run --all-files --hook-stage manual
 
   Changelog:
@@ -186,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Get project version
         id: vars
         run: |
