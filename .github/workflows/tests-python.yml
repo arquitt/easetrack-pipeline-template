@@ -1,0 +1,201 @@
+name: Tests
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      app_path:
+        required: false
+        type: string
+        default: "."
+      deps_path:
+        required: false
+        type: string
+        default: "."
+      changelog_path:
+        required: false
+        type: string
+        default: "."
+      run_lint:
+        required: false
+        type: boolean
+        default: false
+      run_pytest:
+        required: false
+        type: boolean
+        default: true
+      run_changelog:
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      GH_PUSHER:
+        required: true
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - "*"
+    paths-ignore:
+      - "**.md"
+jobs:
+  Test:
+    if: ${{ inputs.run_changelog == true }}
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PUSHER }}
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email github-actions[bot]@users.noreply.github.com
+
+      - name: Extract python version from pyproject.toml
+        id: vars
+        run: |
+          cd ${{ inputs.app_path }}
+          PYTHON_VERSION=$(grep -Po '^\s*python\s*=\s*"\K[^"]+' pyproject.toml)
+          echo "Python version: $PYTHON_VERSION"
+          echo "PYTHON_VERSION=${PYTHON_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.vars.outputs.PYTHON_VERSION }}
+
+      - name: Cache poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install dependencies
+        run: |
+          cd ${{ inputs.deps_path }}
+          sudo apt-get install -y libxml2-utils
+          if [[ -f pyproject.toml ]] && grep -q '\[tool.poetry\]' pyproject.toml; then
+            pip install poetry
+            if grep -q '\[tool.poetry.group.test.dependencies\]' pyproject.toml; then
+              poetry install --no-root --with test
+            else
+              poetry install --no-root --with dev
+            fi
+          else
+            pip install -r requirements.txt
+            pip install -r requirements-test.txt
+          fi
+
+      - name: Run tests
+        id: tests
+        run: |
+          cd ${{ inputs.app_path }}
+          if grep -q '\[tool.poetry\]' pyproject.toml; then
+            PYTHONPATH=. poetry run pytest -n auto --cov-fail-under=0
+          else
+            pytest -n auto --cov-fail-under=0
+          fi
+          coverage_percentage=$(xmllint --xpath "string(//coverage/@line-rate)" coverage.xml)
+          coverage_percentage=$(echo "$coverage_percentage * 100" | bc)
+          formatted_coverage=$(printf "%.1f" "$coverage_percentage")
+          echo "Coverage Percentage: $formatted_coverage"
+          echo "coverage_percentage=${formatted_coverage}" >> $GITHUB_OUTPUT
+
+      - name: Create coverage badge
+        uses: emibcn/badge-action@v2.0.2
+        with:
+          label: "Coverage"
+          status: "${{ steps.tests.outputs.coverage_percentage }}%"
+          color: "31C754"
+          label-color: "414951"
+          path: ".github/badges/coverage.svg"
+
+      - name: Check for badge changes
+        id: check_for_badge_changes
+        run: |
+          if git diff --quiet .github/badges/coverage.svg; then
+            echo "::set-output name=changed::false"
+          else
+            echo "::set-output name=changed::true"
+          fi
+
+      - name: Commit changes if badge updated
+        if: steps.check_for_badge_changes.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PUSHER }}
+        run: |
+          git add .github/badges/coverage.svg
+          git commit -m "docs: update coverage badge [skip ci]"
+          git push -f
+        continue-on-error: true
+
+  Lint:
+    if: ${{ inputs.run_lint == true }}
+    name: Linter Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PUSHER }}
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email github-actions[bot]@users.noreply.github.com
+
+      - name: Extract python version from pyproject.toml
+        id: vars
+        run: |
+          cd ${{ inputs.app_path }}
+          PYTHON_VERSION=$(grep -Po '(?<=python = ")[^"]*' pyproject.toml | sed 's/^\^//')
+          echo "Python version: $PYTHON_VERSION"
+          echo "PYTHON_VERSION=${PYTHON_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.vars.outputs.PYTHON_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+            ~/.cache/pre-commit
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/.pre-commit-config.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pre-commit-
+
+      - name: Install dependencies
+        run: pip install pre-commit
+
+      - name: Run pre-commit bundle
+        run: |
+          cd ${{ inputs.app_path }}
+          sed -i '1s/^/fail_fast: true\n/' .pre-commit-config.yaml
+          pre-commit run --all-files --hook-stage manual
+
+  Changelog:
+    if: ${{ inputs.run_changelog == true }}
+    name: Changelog Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Get project version
+        id: vars
+        run: |
+          echo "project_version=$(cat .version)" >> $GITHUB_OUTPUT
+      - name: Verifica arquivo de changelog
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          validation_level: "error"
+          validation_depth: 5
+          version: ${{ steps.vars.outputs.project_version }}
+          path: ${{ inputs.changelog_path }}/CHANGELOG.md
