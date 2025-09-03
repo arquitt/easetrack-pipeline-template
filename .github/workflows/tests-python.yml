@@ -117,7 +117,12 @@ jobs:
           PYTHONPATH=. poetry run alembic upgrade head
 
       - name: Run tests
+        id: tests
         run: |
+          set -a
+          sed -e '/^\s*#/d' -e '/^\s*$/d' .env.sample > /tmp/envfile
+          source /tmp/envfile
+          set +a
           PYTHONPATH=. poetry run pytest -v --maxfail=1 --disable-warnings
           coverage_percentage=$(xmllint --xpath "string(//coverage/@line-rate)" coverage.xml)
           coverage_percentage=$(echo "$coverage_percentage * 100" | bc)
@@ -138,9 +143,9 @@ jobs:
         id: check_for_badge_changes
         run: |
           if git diff --quiet .github/badges/coverage.svg; then
-            echo "::set-output name=changed::false"
+            echo "changed=false" >> $GITHUB_OUTPUT
           else
-            echo "::set-output name=changed::true"
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Commit changes if badge updated
@@ -164,18 +169,10 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email github-actions[bot]@users.noreply.github.com
 
-      - name: Extract python version from pyproject.toml
-        id: vars
-        run: |
-          cd ${{ inputs.app_path }}
-          PYTHON_VERSION=$(grep -Po '(?<=python = ")[^"]*' pyproject.toml | sed 's/^\^//')
-          echo "Python version: $PYTHON_VERSION"
-          echo "PYTHON_VERSION=${PYTHON_VERSION}" >> $GITHUB_OUTPUT
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ steps.vars.outputs.PYTHON_VERSION }}
+          python-version: "3.13"
 
       - name: Cache dependencies
         uses: actions/cache@v4
