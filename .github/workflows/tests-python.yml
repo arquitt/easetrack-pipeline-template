@@ -90,6 +90,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo apt-get update
           sudo apt-get install -y libxml2-utils
           git config --global url."https://x-token-auth:${{ secrets.GH_PAT }}@github.com".insteadOf "ssh://git@github.com"
           poetry config installer.max-workers 10
