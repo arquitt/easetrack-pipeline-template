@@ -40,6 +40,7 @@ on:
       - "*"
     paths-ignore:
       - "**.md"
+
 jobs:
   Unit:
     runs-on: ubuntu-latest
@@ -74,9 +75,13 @@ jobs:
       - name: Install Poetry
         run: pipx install poetry
 
-      - uses: actions/setup-python@v5
+      - name: Read Python version
+        id: python_version
+        run: echo "version=$(cat .python-version | sed 's/^python-//')" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ steps.python_version.outputs.version }}
           cache: "poetry"
 
       - uses: actions/cache@v4
@@ -170,10 +175,14 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email github-actions[bot]@users.noreply.github.com
 
+      - name: Read Python version
+        id: python_version
+        run: echo "version=$(cat .python-version | sed 's/^python-//')" >> $GITHUB_OUTPUT
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ steps.python_version.outputs.version }}
 
       - name: Cache dependencies
         uses: actions/cache@v4
