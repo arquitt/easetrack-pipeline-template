@@ -14,6 +14,10 @@ on:
         default: "Development"
         required: false
         type: string
+      cluster_namespace:
+        default: "easetrack"
+        required: false
+        type: string
       environment_url:
         required: true
         type: string
@@ -59,29 +63,18 @@ jobs:
       name: ${{ inputs.environment }}
       url: ${{ inputs.environment_url }}
     steps:
+      - name: Configura as credenciais da AWS (Dev)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ secrets.AWS_HML_REGION }}
+          role-to-assume: ${{ secrets.AWS_HML_ROLE_NAME }}
+
+      - name: Instala e configura o kubeclt
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.AWS_HML_CLUSTER_NAME }} --region ${{ secrets.AWS_HML_REGION }}
+
       - name: Checkout do repositório
         uses: actions/checkout@master
-
-      - name: Instala o Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Cache Docker layers
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
-      - name: Configura as credenciais da AWS (DevOps)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ secrets.AWS_DEVOPS_REGION }}
-          role-to-assume: ${{ secrets.AWS_DEVOPS_ROLE_NAME }}
-
-      - name: Autentica com o AWS ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Verifica a tag para upload no ECR
         id: ecr-pretag
@@ -105,11 +98,38 @@ jobs:
           echo "ecr_tag_latest=${{ secrets.AWS_DEVOPS_ECR }}/${GITHUB_REPOSITORY#*\/}:${{ steps.ecr-pretag.outputs.ecr_pretag }}latest" >> $GITHUB_OUTPUT
           echo "ecr_tag_latest_escaped=${{ secrets.AWS_DEVOPS_ECR }}\/${GITHUB_REPOSITORY#*\/}:${{ steps.ecr-pretag.outputs.ecr_pretag }}${GITHUB_SHA}" >> $GITHUB_OUTPUT
 
+      - name: Add building label to Deployment
+        run: |
+          kubectl label deployment ${{ steps.vars.outputs.repo_name }} \
+            build-status=building \
+            branch_name=${{ steps.vars.outputs.branch_name }} \
+            project_version=${{ steps.vars.outputs.project_version }} --overwrite -n ${{ inputs.cluster_namespace }}
+
       - name: Configura o arquivo .env estático de acordo com o ambiente
         if: ${{ inputs.envfile_to_env != 'false' }}
         run: |
           mv ${{ inputs.envfile_to_env }} ${{ inputs.app_location }}.env
           rm ${{ inputs.app_location }}.env.*
+
+      - name: Instala o Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Configura as credenciais da AWS (DevOps)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ secrets.AWS_DEVOPS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEVOPS_ROLE_NAME }}
+
+      - name: Autentica com o AWS ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Constrói a imagem e faz upload para o AWS ECR
         uses: docker/build-push-action@v6
@@ -126,7 +146,7 @@ jobs:
             "ENVIRONMENT=production"
 
       - name: Configura as credenciais da AWS (Dev)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-region: ${{ secrets.AWS_HML_REGION }}
           role-to-assume: ${{ secrets.AWS_HML_ROLE_NAME }}
@@ -156,6 +176,10 @@ jobs:
           envsubst < $TEMPLATE > template_result.yml
           sed -i '/^\([[:space:]]*image: *\).*/s//\1${{ steps.vars.outputs.ecr_tag_latest_escaped }}/;' template_result.yml
           kubectl apply -f template_result.yml --validate=false
+
+      - name: Update build label to Deployment
+        run: |
+          kubectl label deployment ${{ steps.vars.outputs.repo_name }} build-status=done --overwrite -n ${{ inputs.cluster_namespace }}
 
       - name: Purge old cache
         uses: MyAlbum/purge-cache@v2
