@@ -161,7 +161,6 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Aplica o template no K8S
-        if: success() || failure()
         run: |
           TEMPLATE=target/services/${{ steps.vars.outputs.repo_name }}/template.yml
           APP_ENV_FILE=target/services/${{ steps.vars.outputs.repo_name }}/envs.sh
