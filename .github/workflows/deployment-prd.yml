@@ -191,6 +191,7 @@ jobs:
           kubectl label deployment ${{ steps.vars.outputs.repo_name }} build-status=done --overwrite -n ${{ inputs.cluster_namespace }}
 
       - name: Cria a release no Github para a versão
+        id: create_release
         if: ${{ inputs.release == 'true' }}
         uses: ncipollo/release-action@v1
         with:
@@ -201,6 +202,20 @@ jobs:
           draft: ${{ steps.changelog_reader.outputs.status == 'unreleased' }}
           allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Discord about new release
+        if: ${{ steps.create_release.outputs.id != '' }}
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.event.release.name }}"
+          RELEASE_URL="${{ github.event.release.html_url }}"
+
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\": \"🎉 **Released**\n**Tag:** $RELEASE_TAG\n**Name:** $RELEASE_NAME\n🔗 $RELEASE_URL\"}" \
+            "$DISCORD_WEBHOOK_URL"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Purge old cache
         uses: MyAlbum/purge-cache@v2
