@@ -215,7 +215,7 @@ jobs:
             -d "{\"content\": \"🎉 **Released**\n**Tag:** $RELEASE_TAG\n**Name:** $RELEASE_NAME\n🔗 $RELEASE_URL\"}" \
             "$DISCORD_WEBHOOK_URL"
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
 
       - name: Purge old cache
         uses: MyAlbum/purge-cache@v2
