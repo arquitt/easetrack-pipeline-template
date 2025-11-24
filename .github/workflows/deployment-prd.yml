@@ -203,19 +203,11 @@ jobs:
           allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Notify Discord about new release
-        if: ${{ steps.create_release.outputs.id != '' }}
-        run: |
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-          RELEASE_NAME="${{ github.event.release.name }}"
-          RELEASE_URL="${{ github.event.release.html_url }}"
-
-          curl -H "Content-Type: application/json" \
-            -X POST \
-            -d "{\"content\": \"🎉 **Released**\n**Tag:** $RELEASE_TAG\n**Name:** $RELEASE_NAME\n🔗 $RELEASE_URL\"}" \
-            "$DISCORD_WEBHOOK_URL"
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+      - uses: sarisia/actions-status-discord@v1
+        with:
+          title: "${{ steps.vars.outputs.repo_name }}"
+          description: "Released `v${{ steps.vars.outputs.project_version }}`"
+          webhook: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
 
       - name: Purge old cache
         uses: MyAlbum/purge-cache@v2
