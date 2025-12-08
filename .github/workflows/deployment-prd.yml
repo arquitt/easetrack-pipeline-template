@@ -192,7 +192,8 @@ jobs:
 
       - name: Cria a release no Github para a versão
         id: create_release
-        if: ${{ inputs.release == 'true' }}
+        if: ${{ success() && inputs.release == 'true' }}
+        continue-on-error: true
         uses: ncipollo/release-action@v1
         with:
           tag: v${{ steps.vars.outputs.project_version }}
@@ -200,22 +201,26 @@ jobs:
           body: ${{ steps.changelog_reader.outputs.changes }}
           prerelease: ${{ steps.changelog_reader.outputs.status == 'prereleased' }}
           draft: ${{ steps.changelog_reader.outputs.status == 'unreleased' }}
-          allowUpdates: true
+          allowUpdates: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: sarisia/actions-status-discord@v1
+        if: ${{ always() && inputs.release == 'true' }}
+        continue-on-error: true
         with:
           title: "${{ steps.vars.outputs.repo_name }}"
           description: "Released `v${{ steps.vars.outputs.project_version }}`"
           webhook: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
 
       - name: Purge old cache
+        continue-on-error: true
         uses: MyAlbum/purge-cache@v2
         with:
           debug: true
           max-age: 604800
 
       - uses: sarisia/actions-status-discord@v1
-        if: always()
+        if: ${{ always() && inputs.release != 'true' }}
+        continue-on-error: true
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
