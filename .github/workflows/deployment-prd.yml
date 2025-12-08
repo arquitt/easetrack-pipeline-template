@@ -78,7 +78,7 @@ jobs:
           aws eks update-kubeconfig --name ${{ secrets.AWS_PRD_CLUSTER_NAME }} --region ${{ secrets.AWS_PRD_REGION }}
 
       - name: Checkout do repositório
-        uses: actions/checkout@master
+        uses: actions/checkout@v6
 
       - name: Verifica a tag para upload no ECR
         id: ecr-pretag
@@ -166,7 +166,7 @@ jobs:
           aws eks update-kubeconfig --name ${{ secrets.AWS_PRD_CLUSTER_NAME }} --region ${{ secrets.AWS_PRD_REGION }}
 
       - name: Checkout do repositório de templates
-        uses: actions/checkout@master
+        uses: actions/checkout@v6
         with:
           repository: ${{ vars.EKS_TEMPLATES_REPO }}
           path: "target"

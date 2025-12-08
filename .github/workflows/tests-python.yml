@@ -27,6 +27,10 @@ on:
         required: false
         type: boolean
         default: true
+      python_version:
+        required: false
+        type: string
+        default: "3.14"
     secrets:
       GH_PUSHER:
         required: true
@@ -64,7 +68,7 @@ jobs:
       PGPASSWORD: arquitt
       POETRY_VIRTUALENVS_CREATE: "true"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GH_PUSHER }}
 
@@ -76,22 +80,9 @@ jobs:
       - name: Install Poetry
         run: pipx install poetry
 
-      - name: Read Python version
-        id: python_version
-        run: |
-          if [ -f ".python-version" ]; then
-            echo "version=$(sed 's/^python-//' .python-version)" >> $GITHUB_OUTPUT
-            echo "version_no_minor=$(sed -E 's/^(python-)?([0-9]+\.[0-9]+).*/\2/' .python-version)" >> $GITHUB_OUTPUT
-          else
-            version="3.14"
-            version_no_minor="3.14"
-          fi
-          echo "version=${version}" >> $GITHUB_OUTPUT
-          echo "version_no_minor=${version_no_minor}" >> $GITHUB_OUTPUT
-
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ steps.python_version.outputs.version }}
+          python-version: ${{ inputs.python_version }}
           cache: "poetry"
 
       - uses: actions/cache@v4
@@ -129,7 +120,7 @@ jobs:
 
       - name: Run migrations
         run: |
-          sed -i "s|/usr/local/lib/python${{ steps.python_version.outputs.version_no_minor }}/site-packages|$(poetry run python -c 'import site; print(site.getsitepackages()[0])')|g" alembic.ini
+          sed -i "s|/usr/local/lib/python[0-9.]\+/site-packages|$(poetry run python -c 'import site; print(site.getsitepackages()[0])')|g" alembic.ini
           PYTHONPATH=. poetry run alembic upgrade head
 
       - name: Run tests
@@ -149,7 +140,7 @@ jobs:
           echo "coverage_percentage=${formatted_coverage}" >> $GITHUB_OUTPUT
 
       - name: Create coverage badge
-        uses: emibcn/badge-action@v2.0.2
+        uses: emibcn/badge-action@v2
         with:
           label: "Coverage"
           status: "${{ steps.tests.outputs.coverage_percentage }}%"
@@ -180,30 +171,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.GH_PUSHER }}
       - run: |
           git config user.name github-actions[bot]
           git config user.email github-actions[bot]@users.noreply.github.com
 
-      - name: Read Python version
-        id: python_version
-        run: |
-          if [ -f ".python-version" ]; then
-            echo "version=$(sed 's/^python-//' .python-version)" >> $GITHUB_OUTPUT
-            echo "version_no_minor=$(sed -E 's/^(python-)?([0-9]+\.[0-9]+).*/\2/' .python-version)" >> $GITHUB_OUTPUT
-          else
-            version="3.14"
-            version_no_minor="3.14"
-          fi
-          echo "version=${version}" >> $GITHUB_OUTPUT
-          echo "version_no_minor=${version_no_minor}" >> $GITHUB_OUTPUT
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ steps.python_version.outputs.version }}
+          python-version: ${{ inputs.python_version }}
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -231,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Get project version
         id: vars
         run: |
