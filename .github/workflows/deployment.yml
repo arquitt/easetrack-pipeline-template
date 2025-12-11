@@ -78,7 +78,6 @@ jobs:
 
       - name: Verifica a tag para upload no ECR
         id: ecr-pretag
-        if: ${{ inputs.environment != 'Production' }}
         run: echo "ecr_pretag=${{ inputs.namespace }}-" >> $GITHUB_OUTPUT
 
       - name: Extract branch name

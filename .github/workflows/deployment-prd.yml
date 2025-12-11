@@ -82,7 +82,6 @@ jobs:
 
       - name: Verifica a tag para upload no ECR
         id: ecr-pretag
-        if: ${{ inputs.environment != 'Production' }}
         run: echo "ecr_pretag=${{ inputs.namespace }}-" >> $GITHUB_OUTPUT
 
       - name: Recupera o histórico da versão para a criação da release
@@ -146,7 +145,7 @@ jobs:
         with:
           context: ${{ inputs.dockerfile_location }}
           push: true
-          tags: "${{ steps.vars.outputs.ecr_tag_latest }},${{ steps.vars.outputs.ecr_tag }}"
+          tags: "${{ steps.vars.outputs.ecr_tag_latest }},${{ steps.vars.outputs.ecr_tag }},latest"
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ inputs.platforms }}
