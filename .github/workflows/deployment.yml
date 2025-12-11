@@ -175,8 +175,8 @@ jobs:
 
       - name: Update build label to Deployment
         run: |
-          kubectl label deployment ${{ steps.vars.outputs.repo_name }} build-status=done --overwrite -n ${{ inputs.cluster_namespace }}
-
+          kubectl label deployment ${{ steps.vars.outputs.repo_name }}{,-worker,-beat} \
+            build-status=done --overwrite -n ${{ inputs.cluster_namespace }} || true
       - name: Purge old cache
         uses: MyAlbum/purge-cache@v2
         with:
