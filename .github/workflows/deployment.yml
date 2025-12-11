@@ -99,8 +99,8 @@ jobs:
 
       - name: Add building label to Deployment
         run: |
-          kubectl label deployment ${{ steps.vars.outputs.repo_name }} \
-            build-status=building --overwrite -n ${{ inputs.cluster_namespace }}
+          kubectl label deployment ${{ steps.vars.outputs.repo_name }}{,-worker,-beat} \
+            build-status=building --overwrite -n ${{ inputs.cluster_namespace }} || true
 
       - name: Configura o arquivo .env estático de acordo com o ambiente
         if: ${{ inputs.envfile_to_env != 'false' }}

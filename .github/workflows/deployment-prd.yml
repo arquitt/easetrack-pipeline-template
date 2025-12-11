@@ -67,7 +67,7 @@ jobs:
       name: ${{ inputs.environment }}
       url: ${{ inputs.environment_url }}
     steps:
-      - name: Configura as credenciais da AWS (Dev)
+      - name: Configura as credenciais da AWS (PRD)
         uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-region: ${{ secrets.AWS_PRD_REGION }}
@@ -108,11 +108,12 @@ jobs:
           echo "ecr_tag=${{ secrets.AWS_DEVOPS_ECR }}/${GITHUB_REPOSITORY#*\/}:${{ steps.ecr-pretag.outputs.ecr_pretag }}${GITHUB_SHA}" >> $GITHUB_OUTPUT
           echo "ecr_tag_latest=${{ secrets.AWS_DEVOPS_ECR }}/${GITHUB_REPOSITORY#*\/}:${{ steps.ecr-pretag.outputs.ecr_pretag }}latest" >> $GITHUB_OUTPUT
           echo "ecr_tag_latest_escaped=${{ secrets.AWS_DEVOPS_ECR }}\/${GITHUB_REPOSITORY#*\/}:${{ steps.ecr-pretag.outputs.ecr_pretag }}${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "ecr_tag_no_prefix=${{ secrets.AWS_DEVOPS_ECR }}/${GITHUB_REPOSITORY#*\/}:latest" >> $GITHUB_OUTPUT
 
       - name: Add building label to Deployment
         run: |
-          kubectl label deployment ${{ steps.vars.outputs.repo_name }} \
-            build-status=building --overwrite -n ${{ inputs.cluster_namespace }}
+          kubectl label deployment ${{ steps.vars.outputs.repo_name }}{,-worker,-beat} \
+            build-status=building --overwrite -n ${{ inputs.cluster_namespace }} || true
 
       - name: Configura o arquivo .env estático de acordo com o ambiente
         if: ${{ inputs.envfile_to_env != 'false' }}
@@ -145,7 +146,7 @@ jobs:
         with:
           context: ${{ inputs.dockerfile_location }}
           push: true
-          tags: "${{ steps.vars.outputs.ecr_tag_latest }},${{ steps.vars.outputs.ecr_tag }},latest"
+          tags: "${{ steps.vars.outputs.ecr_tag_latest }},${{ steps.vars.outputs.ecr_tag }},${{ steps.vars.outputs.ecr_tag_no_prefix }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ inputs.platforms }}
@@ -154,7 +155,7 @@ jobs:
             "BRANCH_NAME=${{ steps.vars.outputs.branch_name }}"
             "ENVIRONMENT=production"
 
-      - name: Configura as credenciais da AWS (Dev)
+      - name: Configura as credenciais da AWS (PRD)
         uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-region: ${{ secrets.AWS_PRD_REGION }}
@@ -187,7 +188,8 @@ jobs:
 
       - name: Update build label to Deployment
         run: |
-          kubectl label deployment ${{ steps.vars.outputs.repo_name }} build-status=done --overwrite -n ${{ inputs.cluster_namespace }}
+          kubectl label deployment ${{ steps.vars.outputs.repo_name }}{,-worker,-beat} \
+            build-status=done --overwrite -n ${{ inputs.cluster_namespace }} || true
 
       - name: Cria a release no Github para a versão
         id: create_release
