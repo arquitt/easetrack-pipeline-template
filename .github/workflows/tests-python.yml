@@ -178,30 +178,33 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email github-actions[bot]@users.noreply.github.com
 
+      - name: Install Poetry
+        run: pipx install poetry
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python_version }}
+          cache: "poetry"
 
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pypoetry
             ~/.cache/pip
-            ~/.cache/pre-commit
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/.pre-commit-config.yaml') }}
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pre-commit-
+            ${{ runner.os }}-poetry-
 
       - name: Install dependencies
-        run: pip install pre-commit
+        run: |
+          poetry install --only dev --no-interaction --no-root
 
       - name: Run pre-commit bundle
         run: |
           cd ${{ inputs.app_path }}
           grep -q '^fail_fast: true' .pre-commit-config.yaml || sed -i '/^---$/a fail_fast: true' .pre-commit-config.yaml
-          pre-commit run --all-files --hook-stage manual
+          poetry run pre-commit run --all-files --hook-stage manual
 
   Changelog:
     if: ${{ inputs.run_changelog == true }}
