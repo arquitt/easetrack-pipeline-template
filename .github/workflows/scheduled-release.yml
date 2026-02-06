@@ -1,0 +1,76 @@
+name: Publish scheduled release
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      GH_PUSHER:
+        required: true
+  #schedule:
+  #  - cron: "0 3 * * *" # every day at 0am utc-3
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+permissions:
+  actions: write
+  contents: write
+  id-token: write
+jobs:
+  Publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GH_PUSHER }}
+          ref: dev
+          fetch-depth: 1
+
+      - name: Read project version
+        id: vars
+        run: |
+          echo "project_version=$(cat .version)" >> $GITHUB_OUTPUT
+
+      - name: Check if version exists in CHANGELOG
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          validation_depth: 10
+          version: ${{ steps.vars.outputs.project_version }}
+          path: ./CHANGELOG.md
+
+      - name: Notify — no release documented in CHANGELOG
+        if: steps.changelog_reader.outcome == 'failure'
+        uses: sarisia/actions-status-discord@v1
+        continue-on-error: true
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Check if release tag already exists
+        id: check_tag
+        if: steps.changelog_reader.outcome == 'success'
+        run: |
+          git fetch --tags
+          if git rev-parse "v${{ steps.vars.outputs.project_version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Promote dev branch to master (release transition)
+        id: transition_changes
+        if: |
+          steps.changelog_reader.outcome == 'success' &&
+          steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email github-actions[bot]@users.noreply.github.com
+          git fetch origin
+          git checkout master
+          git reset --hard origin/dev
+          git push origin master --force
+
+      - name: Notify — release promotion failed
+        if: steps.transition_changes.outcome == 'failure'
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
