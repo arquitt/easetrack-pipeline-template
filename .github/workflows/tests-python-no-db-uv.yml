@@ -1,0 +1,213 @@
+name: Tests (UV no-db)
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      app_path:
+        required: false
+        type: string
+        default: "."
+      deps_path:
+        required: false
+        type: string
+        default: "."
+      changelog_path:
+        required: false
+        type: string
+        default: "."
+      run_lint:
+        required: false
+        type: boolean
+        default: true
+      run_pytest:
+        required: false
+        type: boolean
+        default: true
+      run_changelog:
+        required: false
+        type: boolean
+        default: true
+      use_postgres:
+        required: false
+        type: boolean
+        default: true
+      python_version:
+        required: false
+        type: string
+        default: "3.14"
+    secrets:
+      GH_PUSHER:
+        required: true
+      GH_PAT:
+        required: true
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - "*"
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  Unit:
+    if: ${{ inputs.run_pytest == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GH_PUSHER }}
+
+      - name: Configure git user
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email github-actions[bot]@users.noreply.github.com
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils
+          git config --global url."https://x-token-auth:${{ secrets.GH_PAT }}@github.com".insteadOf "ssh://git@github.com"
+          if [ -f "pyproject.toml" ]; then
+            if grep -q '^\[dependency-groups\]' pyproject.toml; then
+              if grep -q '^test\s*=\s*\[' pyproject.toml; then
+                uv sync --all-extras --group test
+              elif grep -q '^dev\s*=\s*\[' pyproject.toml; then
+                uv sync --all-extras --group dev
+              else
+                uv sync --all-extras
+              fi
+            else
+              uv sync --all-extras
+            fi
+          fi
+
+      - name: Run tests
+        id: tests
+        run: |
+          if [ -f ".env.sample" ]; then
+            echo ".env.sample encontrado, carregando variáveis..."
+            set -a
+            sed -e '/^\s*#/d' -e '/^\s*$/d' .env.sample > /tmp/envfile
+            source /tmp/envfile
+            set +a
+          fi
+          PYTHONPATH=. uv run pytest -v --maxfail=1 --disable-warnings
+          coverage_percentage=$(xmllint --xpath "string(//coverage/@line-rate)" coverage.xml)
+          coverage_percentage=$(echo "$coverage_percentage * 100" | bc)
+          formatted_coverage=$(printf "%.1f" "$coverage_percentage")
+          echo "Coverage Percentage: $formatted_coverage"
+          echo "coverage_percentage=${formatted_coverage}" >> $GITHUB_OUTPUT
+
+      - name: Create coverage badge
+        uses: emibcn/badge-action@v2
+        with:
+          label: "Coverage"
+          status: "${{ steps.tests.outputs.coverage_percentage || '0.0' }}%"
+          color: "31C754"
+          label-color: "414951"
+          path: ".github/badges/coverage.svg"
+
+      - name: Check for badge changes
+        id: check_for_badge_changes
+        run: |
+          if git diff --quiet .github/badges/coverage.svg; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit changes if badge updated
+        if: steps.check_for_badge_changes.outputs.changed == 'true'
+        run: |
+          git add .github/badges/coverage.svg
+          git commit -m "docs: update coverage badge [skip ci]"
+          git push
+        continue-on-error: true
+
+  Lint:
+    if: ${{ inputs.run_lint == true }}
+    name: Linter Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GH_PUSHER }}
+
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email github-actions[bot]@users.noreply.github.com
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.cache/pre-commit
+          key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock', '**/pyproject.toml', '**/.pre-commit-config.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install dependencies
+        run: |
+          if [ -f "pyproject.toml" ] && grep -q '^\[dependency-groups\]' pyproject.toml && grep -q '^dev\s*=\s*\[' pyproject.toml; then
+            uv sync --group dev
+          else
+            uv sync --all-extras
+          fi
+
+      - name: Run pre-commit bundle
+        run: |
+          cd ${{ inputs.app_path }}
+          grep -q '^fail_fast: true' .pre-commit-config.yaml || sed -i '/^---$/a fail_fast: true' .pre-commit-config.yaml
+          uv run pre-commit run --all-files --hook-stage manual
+
+  Changelog:
+    if: ${{ inputs.run_changelog == true }}
+    name: Changelog Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get project version
+        id: vars
+        run: echo "project_version=$(cat .version)" >> $GITHUB_OUTPUT
+
+      - name: Verifica arquivo de changelog
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          validation_level: "error"
+          validation_depth: 5
+          version: ${{ steps.vars.outputs.project_version }}
+          path: ${{ inputs.changelog_path }}/CHANGELOG.md
