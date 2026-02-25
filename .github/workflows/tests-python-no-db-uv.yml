@@ -187,8 +187,7 @@ jobs:
       - name: Run pre-commit bundle
         run: |
           cd ${{ inputs.app_path }}
-          grep -q '^fail_fast: true' .pre-commit-config.yaml || sed -i '/^---$/a fail_fast: true' .pre-commit-config.yaml
-          uv run pre-commit run --all-files --hook-stage manual
+          uv run pre-commit run --all-files --show-diff-on-failure
 
   Changelog:
     if: ${{ inputs.run_changelog == true }}
