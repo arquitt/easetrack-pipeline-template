@@ -132,6 +132,8 @@ jobs:
           PY
           )
           echo "project_version=${project_version}" >> $GITHUB_OUTPUT
+          echo "latest_commit_message=$(git log -1 --pretty=%s)" >> $GITHUB_OUTPUT
+          echo "latest_commit_author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
           echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
           echo "repo_name=${GITHUB_REPOSITORY#*\/}" >> $GITHUB_OUTPUT
           echo "ecr_registry=${{ secrets.AWS_DEVOPS_ECR }}" >> $GITHUB_OUTPUT
@@ -223,6 +225,11 @@ jobs:
       - uses: sarisia/actions-status-discord@v1
         if: always()
         with:
+          title: "${{ steps.vars.outputs.repo_name }}"
+          description: |
+            Author: `${{ steps.vars.outputs.latest_commit_author }}`
+            Commit: `${{ steps.vars.outputs.latest_commit_message }}`
+            Version `v${{ steps.vars.outputs.project_version }}`
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
 
       - name: Purge Old Cache

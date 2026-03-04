@@ -216,7 +216,40 @@ jobs:
       - name: Get project version
         id: vars
         run: |
-          echo "project_version=$(cat .version)" >> $GITHUB_OUTPUT
+          project_version=$(python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          version = ""
+          pyproject_path = Path("pyproject.toml")
+          if pyproject_path.exists():
+            import tomllib
+
+            data = tomllib.loads(pyproject_path.read_text())
+            version = (
+              data.get("project", {}).get("version")
+              or data.get("tool", {}).get("poetry", {}).get("version")
+              or ""
+            )
+
+          if not version:
+            package_json_path = Path("package.json")
+            if package_json_path.exists():
+              package_data = json.loads(package_json_path.read_text())
+              version = package_data.get("version", "")
+
+          if not version:
+            print(
+              "Unable to determine project version from pyproject.toml or package.json",
+              file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+          print(version)
+          PY
+          )
+          echo "project_version=${project_version}" >> $GITHUB_OUTPUT
       - name: Verifica arquivo de changelog
         id: changelog_reader
         uses: mindsers/changelog-reader-action@v2
