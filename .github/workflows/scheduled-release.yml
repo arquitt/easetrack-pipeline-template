@@ -1,4 +1,4 @@
-name: Publish scheduled release
+name: Publish Scheduled Release
 on:
   workflow_dispatch:
   workflow_call:
@@ -15,22 +15,22 @@ permissions:
   contents: write
   id-token: write
 jobs:
-  Publish:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout dev branch
+      - name: Checkout Dev Branch
         uses: actions/checkout@v6
         with:
           token: ${{ secrets.GH_PUSHER }}
           ref: dev
           fetch-depth: 1
 
-      - name: Read project version
+      - name: Read Project Version
         id: vars
         run: |
           echo "project_version=$(cat .version)" >> $GITHUB_OUTPUT
 
-      - name: Check if version exists in CHANGELOG
+      - name: Check if Version Exists in CHANGELOG
         id: changelog_reader
         uses: mindsers/changelog-reader-action@v2
         with:
@@ -38,14 +38,14 @@ jobs:
           version: ${{ steps.vars.outputs.project_version }}
           path: ./CHANGELOG.md
 
-      - name: Notify — no release documented in CHANGELOG
+      - name: Notify — No Release Documented in CHANGELOG
         if: steps.changelog_reader.outcome == 'failure'
         uses: sarisia/actions-status-discord@v1
         continue-on-error: true
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
 
-      - name: Check if release tag already exists
+      - name: Check if Release Tag Already Exists
         id: check_tag
         if: steps.changelog_reader.outcome == 'success'
         run: |
@@ -56,7 +56,7 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Promote dev branch to master (release transition)
+      - name: Promote Dev Branch to Master (Release Transition)
         id: transition_changes
         if: |
           steps.changelog_reader.outcome == 'success' &&
@@ -69,7 +69,7 @@ jobs:
           git reset --hard origin/dev
           git push origin master --force
 
-      - name: Notify — release promotion failed
+      - name: Notify — Release Promotion Failed
         if: steps.transition_changes.outcome == 'failure'
         uses: sarisia/actions-status-discord@v1
         with:
