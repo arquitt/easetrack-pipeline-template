@@ -233,7 +233,7 @@ jobs:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
 
       - name: Purge Old Cache
-        uses: MyAlbum/purge-cache@v2
+        uses: MyAlbum/purge-cache@v3
         with:
           debug: true
           max-age: 604800

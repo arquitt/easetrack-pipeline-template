@@ -257,7 +257,7 @@ jobs:
 
       - name: Purge Old Cache
         continue-on-error: true
-        uses: MyAlbum/purge-cache@v2
+        uses: MyAlbum/purge-cache@v3
         with:
           debug: true
           max-age: 604800
