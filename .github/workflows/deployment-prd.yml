@@ -146,7 +146,7 @@ jobs:
 
       - name: Read Changelog for Release
         id: changelog_reader
-        uses: mindsers/changelog-reader-action@v2
+        uses: dcotecnologia/keepmeachangelog-action@v1
         with:
           validation_depth: 10
           version: ${{ steps.vars.outputs.project_version }}

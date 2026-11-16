@@ -241,7 +241,7 @@ jobs:
 
       - name: Verifica arquivo de changelog
         id: changelog_reader
-        uses: mindsers/changelog-reader-action@v2
+        uses: dcotecnologia/keepmeachangelog-action@v1
         with:
           validation_level: "error"
           validation_depth: 5
